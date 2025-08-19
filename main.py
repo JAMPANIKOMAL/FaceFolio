@@ -13,7 +13,6 @@ class Worker(QThread):
     """
     Runs a long-running task in a separate thread to avoid freezing the UI.
     """
-    # Signals to communicate with the main thread
     progress = pyqtSignal(int)
     status = pyqtSignal(str)
     finished = pyqtSignal()
@@ -26,8 +25,6 @@ class Worker(QThread):
 
     def run(self):
         """Execute the task."""
-        # Note: We can't directly update the UI from this thread.
-        # We must use signals. For now, we'll just run the function.
         self.function(*self.args, **self.kwargs)
         self.finished.emit()
 
@@ -46,49 +43,107 @@ class FaceFolioApp(QMainWindow):
         self.setWindowTitle("FaceFolio - Photo Sorter")
         self.setGeometry(100, 100, 900, 700)
         self.setStyleSheet("""
-            /* ... (style sheet remains the same) ... */
+            QMainWindow, QWidget {
+                background-color: #0d1117;
+            }
+            QLabel {
+                color: #e6edf3;
+                font-family: 'Segoe UI';
+            }
+            QPushButton {
+                background-color: #238636;
+                color: white;
+                border: 1px solid #30363d;
+                padding: 10px;
+                border-radius: 6px;
+                font-size: 14px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #2ea043;
+            }
+            QPushButton:disabled {
+                background-color: #21262d;
+                color: #7d8590;
+                border-color: #30363d;
+            }
+            QFrame {
+                border: 1px solid #30363d;
+                border-radius: 6px;
+                padding: 15px;
+            }
+            QProgressBar {
+                border: 1px solid #30363d;
+                border-radius: 6px;
+                text-align: center;
+                color: #e6edf3;
+            }
+            QProgressBar::chunk {
+                background-color: #238636;
+                border-radius: 6px;
+            }
+            /* Style for the file path labels */
+            .PathLabel {
+                color: #7d8590;
+                font-size: 12px;
+                padding: 5px;
+                border: 1px solid #30363d;
+                border-radius: 4px;
+                background-color: #161b22;
+            }
         """)
 
         # --- Main Widget and Layout ---
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         
-        # Use a QStackedWidget to manage different screens (e.g., main, processing)
         self.stacked_widget = QStackedWidget()
         main_container_layout = QVBoxLayout(central_widget)
         main_container_layout.addWidget(self.stacked_widget)
 
-        # Create the main screen
         self.main_screen = QWidget()
         self.main_layout = QVBoxLayout(self.main_screen)
         self.main_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.main_layout.setContentsMargins(20, 20, 20, 20)
         self.main_layout.setSpacing(25)
 
-        # Create the processing screen
         self.processing_screen = self.create_processing_screen()
 
-        # Add screens to the stacked widget
         self.stacked_widget.addWidget(self.main_screen)
         self.stacked_widget.addWidget(self.processing_screen)
 
-        # --- UI Elements ---
         self.setup_ui()
 
     def create_processing_screen(self):
-        """Creates the screen shown during processing."""
+        """Creates the screen shown during and after processing."""
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.setSpacing(20)
         
         self.status_label = QLabel("Processing... Please wait.")
         self.status_label.setStyleSheet("font-size: 20px; font-weight: bold; color: #e6edf3;")
         
         self.progress_bar = QProgressBar()
-        self.progress_bar.setRange(0, 0) # Indeterminate progress bar
+        self.progress_bar.setRange(0, 0)
+
+        # Container for buttons that appear after processing
+        self.finish_buttons_widget = QWidget()
+        finish_layout = QHBoxLayout(self.finish_buttons_widget)
+        
+        self.btn_download = QPushButton("Open Download Location")
+        self.btn_download.clicked.connect(self.open_download_location)
+        
+        self.btn_back = QPushButton("Back to Main Menu")
+        self.btn_back.clicked.connect(self.reset_to_main_screen)
+
+        finish_layout.addWidget(self.btn_download)
+        finish_layout.addWidget(self.btn_back)
+        self.finish_buttons_widget.hide() # Hide until processing is done
 
         layout.addWidget(self.status_label)
         layout.addWidget(self.progress_bar)
+        layout.addWidget(self.finish_buttons_widget)
         return widget
 
     def setup_ui(self):
@@ -113,40 +168,84 @@ class FaceFolioApp(QMainWindow):
         """Sets up the UI components for Workflow 1."""
         frame = QFrame()
         layout = QVBoxLayout(frame)
-        # ... (rest of the function is the same)
+        layout.setSpacing(15)
+
+        title_label = QLabel("Workflow 1: Sort Using Reference Photos")
+        title_label.setStyleSheet("font-size: 20px; font-weight: bold; color: #58a6ff;")
+        desc_label = QLabel("Provide a zip of event photos and a zip of named reference photos.")
+        desc_label.setStyleSheet("font-size: 14px; color: #7d8590;")
+        desc_label.setWordWrap(True)
+
+        self.w1_event_path_label = QLabel("No file selected.")
+        self.w1_event_path_label.setProperty("class", "PathLabel")
+        btn_select_w1_event = QPushButton("Select Event Photos (.zip)")
+        btn_select_w1_event.clicked.connect(self.select_w1_event_zip)
+        
+        self.w1_ref_path_label = QLabel("No file selected.")
+        self.w1_ref_path_label.setProperty("class", "PathLabel")
+        btn_select_w1_ref = QPushButton("Select Reference Photos (.zip)")
+        btn_select_w1_ref.clicked.connect(self.select_w1_ref_zip)
+
+        self.w1_start_button = QPushButton("Start Sorting")
         self.w1_start_button.setEnabled(False)
-        self.w1_start_button.clicked.connect(self.start_workflow1) # Connect the button
-        # ... (rest of the function is the same)
+        self.w1_start_button.clicked.connect(self.start_workflow1)
+
+        layout.addWidget(title_label)
+        layout.addWidget(desc_label)
+        layout.addWidget(self.create_file_selector_row(btn_select_w1_event, self.w1_event_path_label))
+        layout.addWidget(self.create_file_selector_row(btn_select_w1_ref, self.w1_ref_path_label))
+        layout.addWidget(self.w1_start_button)
+        
         self.main_layout.addWidget(frame)
 
     def setup_workflow2_ui(self):
         """Sets up the UI components for Workflow 2."""
         frame = QFrame()
         layout = QVBoxLayout(frame)
-        # ... (rest of the function is the same)
+        layout.setSpacing(15)
+
+        title_label = QLabel("Workflow 2: Discover Faces Automatically")
+        title_label.setStyleSheet("font-size: 20px; font-weight: bold; color: #58a6ff;")
+        desc_label = QLabel("Provide a zip of event photos. The app will find unique people for you to tag.")
+        desc_label.setStyleSheet("font-size: 14px; color: #7d8590;")
+        desc_label.setWordWrap(True)
+
+        self.w2_event_path_label = QLabel("No file selected.")
+        self.w2_event_path_label.setProperty("class", "PathLabel")
+        btn_select_w2_event = QPushButton("Select Event Photos (.zip)")
+        btn_select_w2_event.clicked.connect(self.select_w2_event_zip)
+
+        self.w2_start_button = QPushButton("Start Discovery")
         self.w2_start_button.setEnabled(False)
-        # self.w2_start_button.clicked.connect(self.start_workflow2) # We will connect this later
-        # ... (rest of the function is the same)
+        # self.w2_start_button.clicked.connect(self.start_workflow2)
+
+        layout.addWidget(title_label)
+        layout.addWidget(desc_label)
+        layout.addWidget(self.create_file_selector_row(btn_select_w2_event, self.w2_event_path_label))
+        layout.addWidget(self.w2_start_button)
+        
         self.main_layout.addWidget(frame)
 
-    # --- Core Logic Integration ---
+    def create_file_selector_row(self, button, label):
+        row_widget = QWidget()
+        row_layout = QHBoxLayout(row_widget)
+        row_layout.setContentsMargins(0,0,0,0)
+        row_layout.addWidget(button)
+        row_layout.addWidget(label, 1)
+        return row_widget
+
     def start_workflow1(self):
-        """Initiates the photo sorting process for workflow 1."""
-        self.switch_screen(1) # Switch to processing screen
+        self.switch_screen(1)
         self.status_label.setText("Starting Workflow 1...")
-        
-        # Run the core logic in a separate thread
         self.worker = Worker(self.run_w1_logic)
         self.worker.finished.connect(self.on_processing_finished)
         self.worker.start()
 
     def run_w1_logic(self):
-        """The actual function that runs in the background thread."""
         print("--- RUNNING WORKFLOW 1 ---")
         core.setup_directories()
         core.extract_zip(self.w1_event_zip_path, core.EXTRACTED_EVENTS_DIR)
         core.extract_zip(self.w1_ref_zip_path, core.EXTRACTED_REFERENCES_DIR)
-        
         known_encodings, known_names = core.load_reference_encodings(core.EXTRACTED_REFERENCES_DIR)
         if known_encodings:
             core.find_and_sort_faces_by_reference(core.EXTRACTED_EVENTS_DIR, known_encodings, known_names)
@@ -156,42 +255,78 @@ class FaceFolioApp(QMainWindow):
             print("Processing stopped: No reference faces were loaded.")
 
     def on_processing_finished(self):
-        """Called when the worker thread is done."""
         print("--- WORKFLOW FINISHED ---")
         self.status_label.setText("Processing Complete!")
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(100)
-        # In the next step, we'll add a button to go back or download.
+        self.finish_buttons_widget.show()
+
+    def open_download_location(self):
+        """Opens the folder containing the final zip file."""
+        try:
+            # Use os.startfile for Windows, works like double-clicking the folder
+            os.startfile(Path.cwd())
+        except Exception as e:
+            print(f"Could not open file explorer: {e}")
+
+    def reset_to_main_screen(self):
+        """Resets the UI to the initial state."""
+        self.switch_screen(0)
+        self.w1_event_zip_path = None
+        self.w1_ref_zip_path = None
+        self.w2_event_zip_path = None
+        self.update_path_label(self.w1_event_path_label, None)
+        self.update_path_label(self.w1_ref_path_label, None)
+        self.update_path_label(self.w2_event_path_label, None)
+        self.check_workflow1_ready()
+        self.check_workflow2_ready()
+        
+        # Reset processing screen
+        self.status_label.setText("Processing... Please wait.")
+        self.progress_bar.setRange(0, 0)
+        self.finish_buttons_widget.hide()
 
     def switch_screen(self, index):
-        """Switches the view to the specified screen index."""
         self.stacked_widget.setCurrentIndex(index)
 
-    # --- File Dialog Functions (remain the same) ---
-    def create_file_selector_row(self, button, label):
-        # ...
-        return QWidget()
     def select_w1_event_zip(self):
-        # ...
-        pass
+        self.w1_event_zip_path = self.open_zip_file_dialog()
+        self.update_path_label(self.w1_event_path_label, self.w1_event_zip_path)
+        self.check_workflow1_ready()
+
     def select_w1_ref_zip(self):
-        # ...
-        pass
+        self.w1_ref_zip_path = self.open_zip_file_dialog()
+        self.update_path_label(self.w1_ref_path_label, self.w1_ref_zip_path)
+        self.check_workflow1_ready()
+
     def select_w2_event_zip(self):
-        # ...
-        pass
+        self.w2_event_zip_path = self.open_zip_file_dialog()
+        self.update_path_label(self.w2_event_path_label, self.w2_event_zip_path)
+        self.check_workflow2_ready()
+
     def open_zip_file_dialog(self):
-        # ...
-        return ""
+        file_path, _ = QFileDialog.getOpenFileName(self, "Select Zip File", "", "Zip Files (*.zip)")
+        return file_path if file_path else None
+
     def update_path_label(self, label, path):
-        # ...
-        pass
+        if path:
+            label.setText(Path(path).name)
+            label.setToolTip(path) # Show full path on hover
+        else:
+            label.setText("No file selected.")
+            label.setToolTip("")
+
     def check_workflow1_ready(self):
-        # ...
-        pass
+        if self.w1_event_zip_path and self.w1_ref_zip_path:
+            self.w1_start_button.setEnabled(True)
+        else:
+            self.w1_start_button.setEnabled(False)
+
     def check_workflow2_ready(self):
-        # ...
-        pass
+        if self.w2_event_zip_path:
+            self.w2_start_button.setEnabled(True)
+        else:
+            self.w2_start_button.setEnabled(False)
 
 # --- Application Entry Point ---
 if __name__ == "__main__":
