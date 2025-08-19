@@ -11,6 +11,7 @@ EXTRACTED_EVENTS_DIR = TEMP_DIR / "event_photos"
 EXTRACTED_REFERENCES_DIR = TEMP_DIR / "reference_photos"
 UNKNOWN_PORTRAITS_DIR = TEMP_DIR / "unknown_portraits"
 OUTPUT_DIR = Path("sorted_photos")
+DOWNLOAD_ZIP_PATH = Path("FaceFolio_Sorted.zip")
 
 def setup_directories():
     """
@@ -23,6 +24,9 @@ def setup_directories():
         shutil.rmtree(TEMP_DIR)
     if OUTPUT_DIR.exists():
         shutil.rmtree(OUTPUT_DIR)
+    if DOWNLOAD_ZIP_PATH.exists():
+        os.remove(DOWNLOAD_ZIP_PATH)
+
 
     # Create the main temporary and output directories
     TEMP_DIR.mkdir(exist_ok=True)
@@ -106,7 +110,6 @@ def find_and_sort_faces_by_reference(events_dir, known_encodings, known_names):
                 shutil.copy(image_path, unknown_dir)
                 continue
 
-            found_known_person = False
             unique_people_in_photo = set()
 
             for face_encoding in face_encodings:
@@ -154,15 +157,12 @@ def find_unique_faces(events_dir):
             encodings = face_recognition.face_encodings(image, locations)
 
             for i, encoding in enumerate(encodings):
-                # Check if this face is similar to any we've already found
                 matches = face_recognition.compare_faces(all_known_encodings, encoding)
 
                 if True not in matches:
-                    # This is a new, unique person
                     print(f"  -> Found a new unique person (Person #{len(all_known_encodings) + 1})")
                     all_known_encodings.append(encoding)
                     
-                    # Save a portrait of this new person for later tagging
                     top, right, bottom, left = locations[i]
                     face_image = image[top:bottom, left:right]
                     portrait_path = UNKNOWN_PORTRAITS_DIR / f"person_{len(all_known_encodings)}.png"
@@ -171,7 +171,6 @@ def find_unique_faces(events_dir):
                     pil_image = Image.fromarray(face_image)
                     pil_image.save(portrait_path)
                     
-                # We still store all face metadata for later sorting
                 all_face_metadata.append({'path': image_path, 'encoding': encoding})
 
         except Exception as e:
@@ -186,9 +185,6 @@ def sort_photos_by_discovered_faces(all_face_metadata, discovered_encodings, use
     Sorts photos into folders based on the newly discovered faces and user-provided names.
     """
     print("\nSorting all photos based on discovered faces and new names...")
-    
-    # A dictionary to hold which photos belong to which person
-    # e.g., {"Alice": {Path('img1.jpg'), Path('img2.jpg')}}
     person_to_photos = defaultdict(set)
 
     for metadata in all_face_metadata:
@@ -198,7 +194,6 @@ def sort_photos_by_discovered_faces(all_face_metadata, discovered_encodings, use
             person_name = user_names.get(match_index, f"person_{match_index + 1}")
             person_to_photos[person_name].add(metadata['path'])
 
-    # Now, copy the files
     for person_name, photo_paths in person_to_photos.items():
         person_dir = OUTPUT_DIR / person_name
         person_dir.mkdir(exist_ok=True)
@@ -208,46 +203,63 @@ def sort_photos_by_discovered_faces(all_face_metadata, discovered_encodings, use
             
     print("\n--- Photo sorting by discovered faces complete! ---")
 
+# --- FINAL OUTPUT FUNCTIONS ---
+
+def copy_reference_photos(references_dir):
+    """
+    Copies the original reference photos into their corresponding sorted folders.
+    """
+    print("\nAdding reference photos to sorted folders...")
+    for ref_path in Path(references_dir).glob("*.*"):
+        person_name = ref_path.stem
+        person_dir = OUTPUT_DIR / person_name
+        if person_dir.exists():
+            # Name the reference photo to appear first (e.g., "000_Alice.jpg")
+            new_ref_name = f"000_{ref_path.name}"
+            shutil.copy(ref_path, person_dir / new_ref_name)
+            print(f"  -> Copied reference for {person_name}")
+
+def create_download_zip(source_dir, output_path):
+    """
+    Creates a zip file from a source directory.
+    """
+    print(f"\nCreating final zip file at '{output_path}'...")
+    try:
+        with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for root, _, files in os.walk(source_dir):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    archive_name = os.path.relpath(file_path, source_dir)
+                    zipf.write(file_path, archive_name)
+        print("Successfully created download zip.")
+        return True
+    except Exception as e:
+        print(f"Error creating zip file: {e}")
+        return False
 
 # --- Main execution block for testing ---
 if __name__ == "__main__":
     setup_directories()
     
     # --- To test WORKFLOW 1 (with references) ---
-    # 1. Create a "temp_files/reference_photos" folder.
-    # 2. Add a few pictures of people, named "Alice.jpg", "Bob.png", etc.
-    # 3. Create a "temp_files/event_photos" folder.
-    # 4. Add event photos, some containing Alice and/or Bob.
-    # 5. Uncomment and run the block below.
-    
-    # print("\n--- TESTING WORKFLOW 1: With Reference Photos ---")
-    # known_encodings, known_names = load_reference_encodings(EXTRACTED_REFERENCES_DIR)
-    # if known_encodings:
-    #     find_and_sort_faces_by_reference(EXTRACTED_EVENTS_DIR, known_encodings, known_names)
-    # else:
-    #     print("Skipping Workflow 1 test: No reference photos found.")
-        
-        
-    # --- To test WORKFLOW 2 (no references) ---
-    # 1. Create a "temp_files/event_photos" folder.
-    # 2. Add event photos containing a few different people.
-    # 3. Uncomment and run the block below.
-    
-    print("\n--- TESTING WORKFLOW 2: No Reference Photos ---")
-    # This simulates finding unique people and getting their portraits for the UI
-    discovered_encodings, all_metadata = find_unique_faces(EXTRACTED_EVENTS_DIR)
-    
-    if discovered_encodings:
-        # This simulates the user providing names for the discovered people
-        # In the real app, this data would come from the GUI.
-        mock_user_names = {
-            0: "Discovered_Alice",
-            1: "Discovered_Bob"
-            # ... and so on for each person found.
-        }
-        print(f"\nSimulating user providing names: {mock_user_names}")
-        sort_photos_by_discovered_faces(all_metadata, discovered_encodings, mock_user_names)
+    print("\n--- TESTING WORKFLOW 1: With Reference Photos ---")
+    # Simulate extraction by creating dummy files with faces
+    # IMPORTANT: For this test to work, you MUST have actual image files with faces.
+    # Replace "path/to/your/alice.jpg" with real file paths on your computer.
+    try:
+        # shutil.copy("path/to/your/alice.jpg", EXTRACTED_REFERENCES_DIR / "Alice.jpg")
+        # shutil.copy("path/to/your/bob.jpg", EXTRACTED_REFERENCES_DIR / "Bob.jpg")
+        # shutil.copy("path/to/your/event_photo_with_alice.jpg", EXTRACTED_EVENTS_DIR)
+        print("NOTE: Dummy file creation is commented out. Add your own images to test.")
+    except FileNotFoundError:
+        print("Could not find test images. Please update the paths in core.py")
+
+    known_encodings, known_names = load_reference_encodings(EXTRACTED_REFERENCES_DIR)
+    if known_encodings:
+        find_and_sort_faces_by_reference(EXTRACTED_EVENTS_DIR, known_encodings, known_names)
+        copy_reference_photos(EXTRACTED_REFERENCES_DIR)
+        create_download_zip(OUTPUT_DIR, DOWNLOAD_ZIP_PATH)
     else:
-        print("Skipping Workflow 2 test: No faces found in event photos.")
+        print("Skipping Workflow 1 test: No reference photos found in temp_files/reference_photos.")
 
     print("\n--- Core logic script test finished. ---")
