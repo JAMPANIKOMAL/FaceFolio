@@ -6,7 +6,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QFileDialog, QStackedWidget, QProgressBar, QScrollArea,
                              QLineEdit, QMessageBox)
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
-from PyQt6.QtGui import QPixmap, QIcon
+from PyQt6.QtGui import QPixmap, QIcon, QFontDatabase
 
 # --- Import the core logic ---
 import core
@@ -15,9 +15,10 @@ import core
 class Worker(QThread):
     """
     Runs a long-running task in a separate thread to avoid freezing the UI.
-    Emits a result object when finished.
+    Emits progress signals and a result object when finished.
     """
     finished = pyqtSignal(object)
+    progress = pyqtSignal(int, int, str) # current, total, filename
 
     def __init__(self, function, *args, **kwargs):
         super().__init__()
@@ -29,7 +30,8 @@ class Worker(QThread):
     def run(self):
         """Execute the task and store the result."""
         try:
-            self.result = self.function(*self.args, **self.kwargs)
+            # Pass the progress signal to the core function
+            self.result = self.function(self.progress.emit, *self.args, **self.kwargs)
         except Exception as e:
             print(f"An error occurred in the worker thread: {e}")
             self.result = None # Indicate failure
@@ -70,6 +72,9 @@ class FaceFolioApp(QMainWindow):
         self.setWindowTitle("FaceFolio - Photo Sorter")
         self.setGeometry(100, 100, 900, 700)
         
+        # Add a custom font for a more polished look
+        QFontDatabase.addApplicationFont(":/fonts/Inter-Regular.ttf")
+
         if Path("icon.png").exists():
             self.setWindowIcon(QIcon("icon.png"))
             
@@ -90,14 +95,14 @@ class FaceFolioApp(QMainWindow):
         self.setStyleSheet("""
             QMainWindow, QWidget {
                 background-color: #0d1117;
-                font-family: 'Segoe UI';
+                font-family: 'Inter', 'Segoe UI';
             }
             QLabel { color: #e6edf3; }
             QPushButton {
                 background-color: #238636;
                 color: white;
-                border: 1px solid #30363d;
-                padding: 10px;
+                border: none;
+                padding: 12px;
                 border-radius: 6px;
                 font-size: 14px;
                 font-weight: bold;
@@ -106,12 +111,11 @@ class FaceFolioApp(QMainWindow):
             QPushButton:disabled {
                 background-color: #21262d;
                 color: #7d8590;
-                border-color: #30363d;
             }
             QFrame {
                 border: 1px solid #30363d;
-                border-radius: 6px;
-                padding: 20px;
+                border-radius: 8px;
+                padding: 25px;
             }
             QProgressBar {
                 border: 1px solid #30363d;
@@ -119,6 +123,7 @@ class FaceFolioApp(QMainWindow):
                 text-align: center;
                 color: #e6edf3;
                 background-color: #161b22;
+                font-weight: bold;
             }
             QProgressBar::chunk {
                 background-color: #238636;
@@ -127,8 +132,8 @@ class FaceFolioApp(QMainWindow):
             .PathLabel {
                 color: #7d8590;
                 font-size: 12px;
-                padding: 5px;
-                border: 1px solid #30363d;
+                padding: 8px;
+                border: 1px dashed #30363d;
                 border-radius: 4px;
                 background-color: #161b22;
             }
@@ -160,7 +165,7 @@ class FaceFolioApp(QMainWindow):
         content_layout.setSpacing(25)
 
         title_label = QLabel("FaceFolio")
-        title_label.setStyleSheet("font-size: 32px; font-weight: bold; margin-bottom: 20px;")
+        title_label.setStyleSheet("font-size: 36px; font-weight: bold; margin-bottom: 20px;")
         title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         content_layout.addWidget(title_label)
@@ -291,17 +296,16 @@ class FaceFolioApp(QMainWindow):
     def start_workflow2(self):
         if not self.w2_event_zip_path: return
         self.switch_screen(1)
-        self.status_label.setText("Discovering unique faces... This may take a while.")
-        self.progress_bar.setRange(0, 0) # Indeterminate progress
-        self.finish_buttons_widget.hide()
+        self.status_label.setText("Discovering unique faces...")
         self.worker = Worker(self.run_w2_discovery)
+        self.worker.progress.connect(self.update_progress)
         self.worker.finished.connect(self.on_discovery_finished)
         self.worker.start()
 
-    def run_w2_discovery(self):
+    def run_w2_discovery(self, progress_callback):
         core.setup_directories()
-        core.extract_zip(self.w2_event_zip_path, core.EXTRACTED_EVENTS_DIR)
-        return core.find_unique_faces(core.EXTRACTED_EVENTS_DIR)
+        image_paths = core.extract_zip(self.w2_event_zip_path, core.EXTRACTED_EVENTS_DIR)
+        return core.find_unique_faces(progress_callback, image_paths)
 
     def on_discovery_finished(self, result):
         if result is None:
@@ -322,16 +326,14 @@ class FaceFolioApp(QMainWindow):
     def start_final_sorting(self):
         self.switch_screen(1)
         self.status_label.setText("Sorting photos based on your tags...")
-        self.progress_bar.setRange(0, 0)
-        self.finish_buttons_widget.hide()
-
         user_names = {index: widget.get_name() for index, widget in self.face_tag_widgets}
         self.worker = Worker(self.run_w2_final_sort, user_names)
+        self.worker.progress.connect(self.update_progress)
         self.worker.finished.connect(self.on_processing_finished)
         self.worker.start()
 
-    def run_w2_final_sort(self, user_names):
-        core.sort_photos_by_discovered_faces(self.all_face_metadata, self.discovered_encodings, user_names)
+    def run_w2_final_sort(self, progress_callback, user_names):
+        core.sort_photos_by_discovered_faces(progress_callback, self.all_face_metadata, self.discovered_encodings, user_names)
         core.create_download_zip(core.OUTPUT_DIR, core.DOWNLOAD_ZIP_PATH)
         return True # Indicate success
 
@@ -339,13 +341,16 @@ class FaceFolioApp(QMainWindow):
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.setSpacing(20)
+        layout.setSpacing(15)
         
         self.status_label = QLabel("Processing... Please wait.")
-        self.status_label.setStyleSheet("font-size: 20px; font-weight: bold; color: #e6edf3;")
+        self.status_label.setStyleSheet("font-size: 22px; font-weight: bold; color: #e6edf3;")
         
         self.progress_bar = QProgressBar()
-        self.progress_bar.setRange(0, 0)
+        
+        self.progress_details_label = QLabel(" ")
+        self.progress_details_label.setStyleSheet("font-size: 12px; color: #7d8590;")
+        self.progress_details_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.finish_buttons_widget = QWidget()
         finish_layout = QHBoxLayout(self.finish_buttons_widget)
@@ -364,33 +369,42 @@ class FaceFolioApp(QMainWindow):
 
         layout.addWidget(self.status_label)
         layout.addWidget(self.progress_bar)
+        layout.addWidget(self.progress_details_label)
         layout.addWidget(self.finish_buttons_widget)
         return widget
 
     def start_workflow1(self):
         if not (self.w1_event_zip_path and self.w1_ref_zip_path): return
         self.switch_screen(1)
-        self.status_label.setText("Sorting photos... This may take a while.")
-        self.progress_bar.setRange(0, 0) # Indeterminate progress
-        self.finish_buttons_widget.hide()
+        self.status_label.setText("Sorting photos...")
         self.worker = Worker(self.run_w1_logic)
+        self.worker.progress.connect(self.update_progress)
         self.worker.finished.connect(self.on_processing_finished)
         self.worker.start()
 
-    def run_w1_logic(self):
+    def run_w1_logic(self, progress_callback):
         core.setup_directories()
-        core.extract_zip(self.w1_event_zip_path, core.EXTRACTED_EVENTS_DIR)
+        image_paths = core.extract_zip(self.w1_event_zip_path, core.EXTRACTED_EVENTS_DIR)
         core.extract_zip(self.w1_ref_zip_path, core.EXTRACTED_REFERENCES_DIR)
         known_encodings, known_names = core.load_reference_encodings(core.EXTRACTED_REFERENCES_DIR)
         
         if known_encodings:
-            core.find_and_sort_faces_by_reference(core.EXTRACTED_EVENTS_DIR, known_encodings, known_names)
+            core.find_and_sort_faces_by_reference(progress_callback, image_paths, known_encodings, known_names)
             core.copy_reference_photos(core.EXTRACTED_REFERENCES_DIR)
             core.create_download_zip(core.OUTPUT_DIR, core.DOWNLOAD_ZIP_PATH)
             return True # Indicate success
         else:
             print("Processing stopped: No reference faces were loaded.")
             return "No reference faces found."
+
+    def update_progress(self, current, total, filename):
+        if total > 0:
+            percentage = int((current / total) * 100)
+            self.progress_bar.setValue(percentage)
+            self.progress_details_label.setText(f"Processing {current} of {total}: {filename}")
+        else:
+            self.progress_bar.setRange(0, 0) # Indeterminate if total is unknown
+            self.progress_details_label.setText(f"Processing: {filename}")
 
     def on_processing_finished(self, result):
         if result is None:
@@ -405,8 +419,8 @@ class FaceFolioApp(QMainWindow):
 
         print("--- WORKFLOW FINISHED ---")
         self.status_label.setText("Processing Complete!")
-        self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(100)
+        self.progress_details_label.setText("All photos have been sorted.")
         self.btn_download.show()
         self.finish_buttons_widget.show()
         
