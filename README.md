@@ -2,6 +2,8 @@
 
 FaceFolio is a cross-platform desktop app that automatically sorts and organizes event photos by the people in them. Using advanced facial recognition, it groups pictures efficiently, saving you hours of manual work.
 
+> **Note:** We leveraged AI tools and assistance throughout the development of this project to enhance productivity and accuracy.
+
 ## ✨ Features
 
 FaceFolio supports two main workflows:
