@@ -1,0 +1,91 @@
+# GitHub Actions Workflow for building and releasing FaceFolio
+
+name: Build and Release
+
+# This workflow is triggered whenever a new tag is pushed (e.g., v1.0, v1.1)
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pyinstaller
+
+    - name: Install Inno Setup
+      uses: crazy-max/ghaction-setup-inno@v2
+      with:
+        version: "6.2.2"
+
+    - name: Get Version from Tag
+      id: get_version
+      run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+      shell: bash
+
+    - name: Update Version in Inno Setup Script
+      run: |
+        $version = "${{ steps.get_version.outputs.VERSION }}"
+        (Get-Content setup.iss) | ForEach-Object { $_ -replace '#define MyAppVersion "1.0"', "#define MyAppVersion `"$version`"" } | Set-Content setup.iss
+      shell: powershell
+
+    - name: Build Executable with PyInstaller
+      run: |
+        $models_path = python -c "import face_recognition_models; print(face_recognition_models.__path__[0])"
+        pyinstaller --name FaceFolio --onefile --windowed --icon="icon.ico" --add-data "$models_path;face_recognition_models" main.py
+
+    - name: Build Installer with Inno Setup
+      run: iscc setup.iss
+
+    - name: Parse Release Notes
+      id: parse_notes
+      run: |
+        $version = "v${{ steps.get_version.outputs.VERSION }}"
+        $changelog = (Get-Content -Path VERSION.md -Raw) -split "(?=## \[)" | Where-Object { $_.Trim() -ne "" } | ForEach-Object {
+            $versionLine = ($_ -split '\r?\n')[0]
+            if ($versionLine -like "*$version*") {
+                # Return the content for the matching version, excluding the title line
+                $content = ($_ -split '\r?\n' | Select-Object -Skip 1) -join "`n"
+                return $content.Trim()
+            }
+        }
+        # Escape special characters and set as multiline output
+        $changelog = $changelog -replace '%', '%25' -replace "`n", '%0A' -replace "`r", '%0D'
+        echo "CHANGELOG=$changelog" >> $env:GITHUB_OUTPUT
+      shell: powershell
+
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: FaceFolio ${{ github.ref_name }}
+        body: ${{ steps.parse_notes.outputs.CHANGELOG }}
+        draft: false
+        prerelease: false
+
+    - name: Upload Release Asset (Installer)
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./installer/FaceFolio_Setup_v${{ steps.get_version.outputs.VERSION }}.exe
+        asset_name: FaceFolio_Setup_v${{ steps.get_version.outputs.VERSION }}.exe
+        asset_content_type: application/octet-stream
