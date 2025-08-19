@@ -24,11 +24,13 @@ The release process is automated via GitHub Actions. To trigger it:
 
 **Create the Git Tag:**
 ```sh
+# Delete the tag locally
+git tag -d v1.0.1
+# Delete the tag remotely
+git push --delete origin v1.0.1
+# Recreate the tag
 git tag v1.0.1
-```
-
-**Push the Tag to GitHub:**
-```sh
+# Push the new tag to GitHub
 git push origin v1.0.1
 ```
 _Alternatively, use `git push --tags` to push all new tags._
