@@ -48,7 +48,7 @@ jobs:
     - name: Build Executable with PyInstaller
       run: |
         $models_path = python -c "import face_recognition_models; print(face_recognition_models.__path__[0])"
-        pyinstaller --name FaceFolio --onefile --windowed --icon="assets/icon.ico" --add-data "$models_path;face_recognition_models" src/main.py
+        pyinstaller --name FaceFolio --onefile --windowed --icon="assets/icon.ico" --add-data "$models_path;face_recognition_models" --add-data "assets;assets" src/main.py
 
     - name: Build Installer with Inno Setup
       run: iscc build/setup.iss

@@ -11,6 +11,17 @@ from PyQt6.QtGui import QPixmap, QIcon, QFontDatabase
 # --- Import the core logic ---
 import core
 
+# --- Helper function to get resource paths (works in both dev and frozen exe) ---
+def resource_path(relative_path):
+    """Get absolute path to resource, works for dev and for PyInstaller"""
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        # In development, use the parent of this file's directory
+        base_path = Path(__file__).parent.parent
+    return os.path.join(base_path, relative_path)
+
 # --- Worker Thread for Long-Running Tasks ---
 class Worker(QThread):
     """
@@ -75,9 +86,9 @@ class FaceFolioApp(QMainWindow):
         # Add a custom font for a more polished look
         QFontDatabase.addApplicationFont(":/fonts/Inter-Regular.ttf")
 
-        icon_path = Path(__file__).parent.parent / "assets" / "icon.png"
-        if icon_path.exists():
-            self.setWindowIcon(QIcon(str(icon_path)))
+        icon_path = resource_path(os.path.join("assets", "icon.png"))
+        if os.path.exists(icon_path):
+            self.setWindowIcon(QIcon(icon_path))
             
         self.apply_stylesheet()
 

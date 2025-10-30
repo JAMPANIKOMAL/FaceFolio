@@ -3,3 +3,4 @@ face_recognition
 Pillow
 cmake
 dlib
+pyinstaller
