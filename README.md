@@ -43,8 +43,8 @@ cd path/to/FaceFolio
 python -m venv venv
 venv\Scripts\activate
 
-# Install required libraries
-pip install cmake dlib face_recognition opencv-python Pillow
+# Install required libraries from requirements.txt
+pip install -r requirements.txt
 ```
 
 ### 3. Running the Core Logic
@@ -59,7 +59,7 @@ python src/main.py
 
 - **Core Language:** Python
 - **Facial Recognition:** face_recognition (built on dlib)
-- **Image Processing:** Pillow, opencv-python
+- **Image Processing:** Pillow
 - **GUI Framework:** PyQt6
 - **Packaging:** PyInstaller
 - **Installer:** Inno Setup
