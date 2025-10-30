@@ -30,7 +30,7 @@ jobs:
         pip install pyinstaller
 
     - name: Install Inno Setup
-  uses: crazy-max/ghaction-setup-innosetup@v2
+      uses: crazy-max/ghaction-setup-innosetup@v2
       with:
         version: "6.2.2"
 

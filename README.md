@@ -49,28 +49,32 @@ pip install cmake dlib face_recognition opencv-python Pillow
 
 ### 3. Running the Core Logic
 
-The `core.py` script contains the main processing logic. Test the workflows by following the instructions in the `if __name__ == "__main__":` block.
+The `src/core.py` script contains the main processing logic. You can run the GUI application with:
 
-#### To Test Workflow 1 (Reference-Based):
-
-1. Create `temp_files/reference_photos` and add named reference images (e.g., `Alice.jpg`).
-2. Create `temp_files/event_photos` and add your event photos.
-3. Uncomment the "TESTING WORKFLOW 1" block in `core.py` and run the script.
-
-#### To Test Workflow 2 (Discovery):
-
-1. Create `temp_files/event_photos` and add your event photos.
-2. Uncomment the "TESTING WORKFLOW 2" block in `core.py` and run the script.
+```sh
+python src/main.py
+```
 
 ## 🛠️ Technology Stack
 
 - **Core Language:** Python
 - **Facial Recognition:** face_recognition (built on dlib)
 - **Image Processing:** Pillow, opencv-python
-- **GUI Framework (Upcoming):** PyQt6
-- **Packaging (Upcoming):** PyInstaller
-- **Installer (Upcoming):** Inno Setup
+- **GUI Framework:** PyQt6
+- **Packaging:** PyInstaller
+- **Installer:** Inno Setup
 
-## 🚀 Next Steps
+## 🚀 Project Structure
 
-The next phase is building the graphical user interface (GUI) to connect with the core logic, providing a seamless and user-friendly experience.
+```
+FaceFolio/
+├── src/              # Source code
+│   ├── main.py      # PyQt6 GUI application
+│   └── core.py      # Facial recognition logic
+├── docs/             # Documentation
+├── assets/           # Icons and resources
+├── build/            # Build configuration
+└── requirements.txt  # Python dependencies
+```
+
+Run the application with `python src/main.py` after installing dependencies.
