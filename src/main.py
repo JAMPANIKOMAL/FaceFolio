@@ -75,8 +75,9 @@ class FaceFolioApp(QMainWindow):
         # Add a custom font for a more polished look
         QFontDatabase.addApplicationFont(":/fonts/Inter-Regular.ttf")
 
-        if Path("icon.png").exists():
-            self.setWindowIcon(QIcon("icon.png"))
+        icon_path = Path(__file__).parent.parent / "assets" / "icon.png"
+        if icon_path.exists():
+            self.setWindowIcon(QIcon(str(icon_path)))
             
         self.apply_stylesheet()
 

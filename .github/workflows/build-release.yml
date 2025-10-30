@@ -42,22 +42,22 @@ jobs:
     - name: Update Version in Inno Setup Script
       run: |
         $version = "${{ steps.get_version.outputs.VERSION }}"
-        (Get-Content setup.iss) | ForEach-Object { $_ -replace '#define MyAppVersion "1.0"', "#define MyAppVersion `"$version`"" } | Set-Content setup.iss
+        (Get-Content build/setup.iss) | ForEach-Object { $_ -replace '#define MyAppVersion "1.0"', "#define MyAppVersion `"$version`"" } | Set-Content build/setup.iss
       shell: powershell
 
     - name: Build Executable with PyInstaller
       run: |
         $models_path = python -c "import face_recognition_models; print(face_recognition_models.__path__[0])"
-        pyinstaller --name FaceFolio --onefile --windowed --icon="icon.ico" --add-data "$models_path;face_recognition_models" main.py
+        pyinstaller --name FaceFolio --onefile --windowed --icon="assets/icon.ico" --add-data "$models_path;face_recognition_models" src/main.py
 
     - name: Build Installer with Inno Setup
-      run: iscc setup.iss
+      run: iscc build/setup.iss
 
     - name: Parse Release Notes
       id: parse_notes
       run: |
         $version = "v${{ steps.get_version.outputs.VERSION }}"
-        $changelog = (Get-Content -Path VERSION.md -Raw) -split "(?=## \[)" | Where-Object { $_.Trim() -ne "" } | ForEach-Object {
+        $changelog = (Get-Content -Path docs/VERSION.md -Raw) -split "(?=## \[)" | Where-Object { $_.Trim() -ne "" } | ForEach-Object {
             $versionLine = ($_ -split '\r?\n')[0]
             if ($versionLine -like "*$version*") {
                 # Return the content for the matching version, excluding the title line
